@@ -7,39 +7,26 @@ import ast
 import time
 import random
 import requests
-import json
-import signal
-import psutil  # Server RAM/CPU monitor
+import json  # <--- নতুন যুক্ত করা হয়েছে
 from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
-from flask_httpauth import HTTPBasicAuth
-from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
-# --- সিকিউরিটি (Login System) ---
-auth = HTTPBasicAuth()
-users = {
-    "admin": generate_password_hash("admin123")  # আপনার ইউজারনেম ও পাসওয়ার্ড (পরিবর্তন করতে পারেন)
-}
-
-@auth.verify_password
-def verify_password(username, password):
-    if username in users and check_password_hash(users.get(username), password):
-        return username
-
 # --- কনফিগারেশন ---
 CLONE_DIR = "cloned_repos"
-DATA_FILE = "bots_data.json"
+DATA_FILE = "bots_data.json"  # <--- ডাটাবেস ফাইল
 
 if not os.path.exists(CLONE_DIR):
     os.makedirs(CLONE_DIR)
 
+# মেমোরি স্টোরেজ (এখন আমরা ফাইল থেকে লোড করব)
 running_processes = {}   
 deployment_status = {}   
 bot_configs = {}         
 
-# --- ডাটাবেস লোড এবং সেভ ---
+# --- ডাটাবেস লোড এবং সেভ ফাংশন ---
 def load_data():
+    """বট চালু হওয়ার সময় আগের ডাটা লোড করা"""
     global bot_configs
     if os.path.exists(DATA_FILE):
         try:
@@ -51,12 +38,14 @@ def load_data():
         bot_configs = {}
 
 def save_data():
+    """যেকোন পরিবর্তনের পর ডাটা সেভ করা"""
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(bot_configs, f, indent=4)
     except Exception as e:
         print(f"Error saving data: {e}")
 
+# স্ট্যান্ডার্ড লাইব্রেরি
 STANDARD_LIBS = {
     "os", "sys", "time", "json", "math", "random", "datetime", "subprocess", "threading",
     "collections", "re", "ftplib", "http", "urllib", "email", "shutil", "logging", "typing",
@@ -79,6 +68,7 @@ PIP_MAPPING = {
 }
 
 # --- হেল্পার ফাংশন ---
+
 def clean_url(url):
     return url.strip().rstrip("/")
 
@@ -112,6 +102,7 @@ def get_imports_from_folder(folder_path):
     return imports
 
 def run_bot_process(folder_name):
+    """বট স্টার্ট করার ফাংশন"""
     repo_path = os.path.join(CLONE_DIR, folder_name)
     config = bot_configs.get(folder_name, {})
     
@@ -124,6 +115,7 @@ def run_bot_process(folder_name):
         deployment_status[folder_name] = "⚠️ Start File Missing"
         return
 
+    # যদি অলরেডি রানিং থাকে তবে নতুন করে রান করার দরকার নেই
     if folder_name in running_processes and running_processes[folder_name].poll() is None:
         return
 
@@ -138,18 +130,12 @@ def run_bot_process(folder_name):
     try:
         log_file = open(log_file_path, "a", encoding="utf-8")
         
-        # Cross-platform process setup
-        kwargs = {}
-        if os.name == 'posix':
-            kwargs['preexec_fn'] = os.setsid
-            
         proc = subprocess.Popen(
             ["python", start_file],
             cwd=repo_path,
             env=bot_env,
             stdout=log_file,
-            stderr=log_file,
-            **kwargs
+            stderr=log_file
         )
         running_processes[folder_name] = proc
         
@@ -157,55 +143,46 @@ def run_bot_process(folder_name):
         if proc.poll() is None:
             deployment_status[folder_name] = f"Running 🟢 (Port: {assigned_port})"
         else:
-            deployment_status[folder_name] = "❌ Crashed (View Logs)"
+            deployment_status[folder_name] = "❌ Crashed (View bot_logs.txt)"
             
     except Exception as e:
         deployment_status[folder_name] = f"❌ Error: {str(e)}"
 
-# --- লাইভ ইনস্টলেশন লগ সহ আপডেট করা ফাংশন ---
 def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
     repo_path = os.path.join(CLONE_DIR, folder_name)
     port_to_use = custom_port if custom_port else str(random.randint(5001, 9999))
+    
     env_vars = parse_env_text(env_text)
 
+    # কনফিগ আপডেট এবং সেভ
     bot_configs[folder_name] = {
         "link": repo_link,
         "start_file": start_file,
         "port": port_to_use,
         "env": env_vars
     }
-    save_data()
+    save_data() # <--- ডাটাবেসে সেভ করা হলো
 
     try:
         if not os.path.exists(repo_path):
             deployment_status[folder_name] = "⬇️ Cloning Repo..."
             subprocess.run(["git", "clone", repo_link, repo_path], check=True)
         
-        log_file_path = os.path.join(repo_path, "bot_logs.txt")
-        
-        # pip install এর আউটপুট সরাসরি লগে পাঠানো হচ্ছে
-        with open(log_file_path, "a", encoding="utf-8") as log_file:
-            log_file.write("\n[System] Repository cloned successfully. Preparing installation...\n")
+        req_file = os.path.join(repo_path, "requirements.txt")
+        if os.path.exists(req_file):
+            deployment_status[folder_name] = "📦 Installing Requirements..."
+            subprocess.run(["pip", "install", "-r", "requirements.txt"], cwd=repo_path, stdout=subprocess.DEVNULL)
+        else:
+            deployment_status[folder_name] = "🔍 Smart Scanning..."
+            detected_imports = get_imports_from_folder(repo_path)
+            packages_to_install = []
+            for lib in detected_imports:
+                if lib not in STANDARD_LIBS and not lib.startswith("_"):
+                    packages_to_install.append(PIP_MAPPING.get(lib, lib))
             
-            req_file = os.path.join(repo_path, "requirements.txt")
-            if os.path.exists(req_file):
-                deployment_status[folder_name] = "📦 Installing Requirements..."
-                log_file.write("[System] Installing from requirements.txt...\n")
-                subprocess.run(["pip", "install", "-r", "requirements.txt"], cwd=repo_path, stdout=log_file, stderr=log_file)
-            else:
-                deployment_status[folder_name] = "🔍 Smart Scanning..."
-                detected_imports = get_imports_from_folder(repo_path)
-                packages_to_install = []
-                for lib in detected_imports:
-                    if lib not in STANDARD_LIBS and not lib.startswith("_"):
-                        packages_to_install.append(PIP_MAPPING.get(lib, lib))
-                
-                if packages_to_install:
-                    deployment_status[folder_name] = f"📦 Auto-Installing Libs..."
-                    log_file.write(f"[System] Auto-installing detected packages: {', '.join(packages_to_install)}\n")
-                    subprocess.run(["pip", "install"] + packages_to_install, cwd=repo_path, stdout=log_file, stderr=log_file)
-            
-            log_file.write("\n[System] Package installation complete! Starting bot process...\n\n")
+            if packages_to_install:
+                deployment_status[folder_name] = f"📦 Auto-Installing Libs..."
+                subprocess.run(["pip", "install"] + packages_to_install, cwd=repo_path, stdout=subprocess.DEVNULL)
 
         run_path = os.path.join(repo_path, start_file)
         if not os.path.exists(run_path):
@@ -214,7 +191,7 @@ def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
                 if os.path.exists(os.path.join(repo_path, f)):
                     start_file = f
                     bot_configs[folder_name]["start_file"] = f
-                    save_data()
+                    save_data() # <--- স্টার্ট ফাইল আপডেট হলে আবার সেভ
                     break
         
         run_bot_process(folder_name)
@@ -222,38 +199,31 @@ def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
     except Exception as e:
         print(f"Error: {e}")
         deployment_status[folder_name] = "❌ Error Occurred"
-        # এরর হলে সেটাও লগে সেভ হবে
-        if os.path.exists(repo_path):
-            with open(os.path.join(repo_path, "bot_logs.txt"), "a", encoding="utf-8") as f:
-                f.write(f"\n[System Error] Deployment Failed: {e}\n")
 
+# --- আগের সেশন রিস্টোর করা ---
 def restore_sessions():
-    time.sleep(2)
+    """সার্ভার চালু হলে পুরনো বটগুলো আবার চালু করবে"""
+    time.sleep(2) # Flask চালু হওয়ার জন্য একটু সময় দেওয়া
     print("🔄 Restoring previous sessions...")
-    load_data()
+    load_data() # ফাইল থেকে ডাটা লোড
     for folder_name in bot_configs:
         path = os.path.join(CLONE_DIR, folder_name)
         if os.path.exists(path):
             threading.Thread(target=run_bot_process, args=(folder_name,)).start()
+        else:
+            print(f"⚠️ Folder missing for {folder_name}, skipping.")
 
 # --- ROUTES ---
 
 @app.route('/')
-@auth.login_required
 def home():
     return render_template('index.html')
-
-@app.route('/system_stats')
-@auth.login_required
-def system_stats():
-    cpu = psutil.cpu_percent()
-    ram = psutil.virtual_memory().percent
-    return jsonify({"cpu": cpu, "ram": ram})
 
 @app.route('/view/<folder_name>/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE'])
 @app.route('/view/<folder_name>/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_view(folder_name, path):
     config = bot_configs.get(folder_name)
+    # প্রসেস যদি ক্র্যাশ করে থাকে তবুও যাতে কনফিগ থাকে
     if not config:
         return "Bot config not found!", 404
         
@@ -295,9 +265,9 @@ def proxy_view(folder_name, path):
         return f"Proxy Error (Bot might be stopped): {e}", 502
 
 @app.route('/status')
-@auth.login_required
 def status_api():
     bots_data = []
+    # ডাটাবেস থেকে কনফিগ নিয়ে লুপ চালাবো
     for folder, config in bot_configs.items():
         current_status = deployment_status.get(folder, "Unknown")
         is_running = False
@@ -309,6 +279,7 @@ def status_api():
             else:
                 current_status = "Stopped 🔴"
         else:
+            # যদি কনফিগ থাকে কিন্তু প্রসেস না থাকে
             current_status = deployment_status.get(folder, "Stopped 🔴")
 
         bots_data.append({
@@ -320,40 +291,22 @@ def status_api():
     return jsonify(bots_data)
 
 @app.route('/get_config/<folder_name>')
-@auth.login_required
 def get_config(folder_name):
     config = bot_configs.get(folder_name, {})
     env_vars = config.get("env", {})
     env_text = "\n".join([f"{k}={v}" for k, v in env_vars.items()])
     return jsonify({"env": env_text})
 
-@app.route('/logs/<folder_name>')
-@auth.login_required
-def get_logs(folder_name):
-    repo_path = os.path.join(CLONE_DIR, folder_name)
-    log_file_path = os.path.join(repo_path, "bot_logs.txt")
-    
-    if os.path.exists(log_file_path):
-        try:
-            with open(log_file_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()[-200:] # শেষ ২০০ লাইন দেখাবে
-                return "".join(lines)
-        except Exception as e:
-            return f"Error reading logs: {e}"
-    return "No logs found yet. Please wait..."
-
 @app.route('/update_config/<folder_name>', methods=['POST'])
-@auth.login_required
 def update_config(folder_name):
     if folder_name in bot_configs:
         env_text = request.form.get("env_vars", "")
         bot_configs[folder_name]["env"] = parse_env_text(env_text)
-        save_data()
+        save_data() # <--- আপডেটের পর সেভ
         return "Updated", 200
     return "Not Found", 404
 
 @app.route('/deploy', methods=['POST'])
-@auth.login_required
 def deploy():
     repo_link = request.form.get('repo_link')
     start_file = request.form.get('start_file') or "main.py"
@@ -375,7 +328,6 @@ def deploy():
     return redirect(url_for('home'))
 
 @app.route('/start/<folder_name>')
-@auth.login_required
 def start_bot(folder_name):
     if folder_name not in running_processes or running_processes[folder_name].poll() is not None:
         deployment_status[folder_name] = "⏳ Starting..."
@@ -384,24 +336,19 @@ def start_bot(folder_name):
     return redirect(url_for('home'))
 
 @app.route('/stop/<folder_name>')
-@auth.login_required
 def stop_bot(folder_name):
     if folder_name in running_processes:
-        proc = running_processes[folder_name]
         try:
-            if os.name == 'posix':
-                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-            else:
-                proc.terminate()
+            running_processes[folder_name].terminate()
+            running_processes[folder_name].wait(timeout=2) 
         except:
-            proc.kill()
+            running_processes[folder_name].kill()
             
         del running_processes[folder_name]
     deployment_status[folder_name] = "Stopped 🔴"
     return redirect(url_for('home'))
 
 @app.route('/delete/<folder_name>')
-@auth.login_required
 def delete_bot(folder_name):
     if folder_name in running_processes:
         stop_bot(folder_name)
@@ -414,10 +361,12 @@ def delete_bot(folder_name):
     if folder_name in deployment_status: del deployment_status[folder_name]
     if folder_name in bot_configs: 
         del bot_configs[folder_name]
-        save_data()
+        save_data() # <--- ডিলিট করার পর ডাটাবেস আপডেট
     return redirect(url_for('home'))
 
 if __name__ == "__main__":
+    # অ্যাপ চালু হওয়ার সময় অটোমেটিক আগের বটগুলো স্টার্ট হবে
     threading.Thread(target=restore_sessions).start()
+    
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port)
