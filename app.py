@@ -19,8 +19,7 @@ app = Flask(__name__)
 # --- সিকিউরিটি (Login System) ---
 auth = HTTPBasicAuth()
 users = {
-    # "username": generate_password_hash("password")
-    "admin": generate_password_hash("admin123")  # আপনার পাসওয়ার্ড এখানে দিন
+    "admin": generate_password_hash("admin123")  # আপনার ইউজারনেম ও পাসওয়ার্ড (পরিবর্তন করতে পারেন)
 }
 
 @auth.verify_password
@@ -139,7 +138,7 @@ def run_bot_process(folder_name):
     try:
         log_file = open(log_file_path, "a", encoding="utf-8")
         
-        # Cross-platform Zombie process killer setup
+        # Cross-platform process setup
         kwargs = {}
         if os.name == 'posix':
             kwargs['preexec_fn'] = os.setsid
@@ -163,6 +162,7 @@ def run_bot_process(folder_name):
     except Exception as e:
         deployment_status[folder_name] = f"❌ Error: {str(e)}"
 
+# --- লাইভ ইনস্টলেশন লগ সহ আপডেট করা ফাংশন ---
 def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
     repo_path = os.path.join(CLONE_DIR, folder_name)
     port_to_use = custom_port if custom_port else str(random.randint(5001, 9999))
@@ -181,21 +181,31 @@ def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
             deployment_status[folder_name] = "⬇️ Cloning Repo..."
             subprocess.run(["git", "clone", repo_link, repo_path], check=True)
         
-        req_file = os.path.join(repo_path, "requirements.txt")
-        if os.path.exists(req_file):
-            deployment_status[folder_name] = "📦 Installing Requirements..."
-            subprocess.run(["pip", "install", "-r", "requirements.txt"], cwd=repo_path, stdout=subprocess.DEVNULL)
-        else:
-            deployment_status[folder_name] = "🔍 Smart Scanning..."
-            detected_imports = get_imports_from_folder(repo_path)
-            packages_to_install = []
-            for lib in detected_imports:
-                if lib not in STANDARD_LIBS and not lib.startswith("_"):
-                    packages_to_install.append(PIP_MAPPING.get(lib, lib))
+        log_file_path = os.path.join(repo_path, "bot_logs.txt")
+        
+        # pip install এর আউটপুট সরাসরি লগে পাঠানো হচ্ছে
+        with open(log_file_path, "a", encoding="utf-8") as log_file:
+            log_file.write("\n[System] Repository cloned successfully. Preparing installation...\n")
             
-            if packages_to_install:
-                deployment_status[folder_name] = f"📦 Auto-Installing Libs..."
-                subprocess.run(["pip", "install"] + packages_to_install, cwd=repo_path, stdout=subprocess.DEVNULL)
+            req_file = os.path.join(repo_path, "requirements.txt")
+            if os.path.exists(req_file):
+                deployment_status[folder_name] = "📦 Installing Requirements..."
+                log_file.write("[System] Installing from requirements.txt...\n")
+                subprocess.run(["pip", "install", "-r", "requirements.txt"], cwd=repo_path, stdout=log_file, stderr=log_file)
+            else:
+                deployment_status[folder_name] = "🔍 Smart Scanning..."
+                detected_imports = get_imports_from_folder(repo_path)
+                packages_to_install = []
+                for lib in detected_imports:
+                    if lib not in STANDARD_LIBS and not lib.startswith("_"):
+                        packages_to_install.append(PIP_MAPPING.get(lib, lib))
+                
+                if packages_to_install:
+                    deployment_status[folder_name] = f"📦 Auto-Installing Libs..."
+                    log_file.write(f"[System] Auto-installing detected packages: {', '.join(packages_to_install)}\n")
+                    subprocess.run(["pip", "install"] + packages_to_install, cwd=repo_path, stdout=log_file, stderr=log_file)
+            
+            log_file.write("\n[System] Package installation complete! Starting bot process...\n\n")
 
         run_path = os.path.join(repo_path, start_file)
         if not os.path.exists(run_path):
@@ -212,6 +222,10 @@ def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
     except Exception as e:
         print(f"Error: {e}")
         deployment_status[folder_name] = "❌ Error Occurred"
+        # এরর হলে সেটাও লগে সেভ হবে
+        if os.path.exists(repo_path):
+            with open(os.path.join(repo_path, "bot_logs.txt"), "a", encoding="utf-8") as f:
+                f.write(f"\n[System Error] Deployment Failed: {e}\n")
 
 def restore_sessions():
     time.sleep(2)
@@ -322,11 +336,11 @@ def get_logs(folder_name):
     if os.path.exists(log_file_path):
         try:
             with open(log_file_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()[-150:] 
+                lines = f.readlines()[-200:] # শেষ ২০০ লাইন দেখাবে
                 return "".join(lines)
         except Exception as e:
             return f"Error reading logs: {e}"
-    return "No logs found. Bot is starting or hasn't created logs."
+    return "No logs found yet. Please wait..."
 
 @app.route('/update_config/<folder_name>', methods=['POST'])
 @auth.login_required
@@ -375,7 +389,6 @@ def stop_bot(folder_name):
     if folder_name in running_processes:
         proc = running_processes[folder_name]
         try:
-            # Strong process kill (Kills zombies too)
             if os.name == 'posix':
                 os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
             else:
