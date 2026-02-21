@@ -1,168 +1,243 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Bot Manager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <style>
-        body { background-color: #0f0f0f; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .card { background-color: #1f1f1f; border: 1px solid #333; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
-        .form-control { background-color: #2b2b2b; border: 1px solid #444; color: white; }
-        .form-control:focus { background-color: #333; color: white; border-color: #0d6efd; }
-        .table { color: #ccc; }
-        .table-hover tbody tr:hover { background-color: #2a2a2a; }
-        .btn-web { background-color: #0d6efd; color: white; }
-        .btn-web:hover { background-color: #0b5ed7; color: white; }
-        .modal-content { background-color: #1f1f1f; color: white; border: 1px solid #444; }
-        .modal-header { border-bottom: 1px solid #333; }
-        .modal-footer { border-top: 1px solid #333; }
-        .status-running { color: #00ff88; font-weight: bold; }
-        .status-stopped { color: #ff4d4d; font-weight: bold; }
-        .status-loading { color: #ffcc00; font-weight: bold; }
-    </style>
-</head>
-<body>
+<!DOCTYPE html> 
+<html lang="en"> 
+<head>     
+    <meta charset="UTF-8">     
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">     
+    <title>Pro Bot Manager</title>     
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">     
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>     
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>     
+    <style>         
+        body { background-color: #0f0f0f; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }         
+        .card { background-color: #1f1f1f; border: 1px solid #333; box-shadow: 0 0 15px rgba(0,0,0,0.5); }         
+        .form-control { background-color: #2b2b2b; border: 1px solid #444; color: white; }         
+        .form-control:focus { background-color: #333; color: white; border-color: #0d6efd; }         
+        .table { color: #ccc; }         
+        .table-hover tbody tr:hover { background-color: #2a2a2a; }         
+        .btn-web { background-color: #0d6efd; color: white; }         
+        .btn-web:hover { background-color: #0b5ed7; color: white; }         
+        .modal-content { background-color: #1f1f1f; color: white; border: 1px solid #444; }         
+        .modal-header { border-bottom: 1px solid #333; }         
+        .modal-footer { border-top: 1px solid #333; }         
+        .status-running { color: #00ff88; font-weight: bold; }         
+        .status-stopped { color: #ff4d4d; font-weight: bold; }         
+        .status-loading { color: #ffcc00; font-weight: bold; }     
+    </style> 
+</head> 
+<body>  
 
-<div class="container mt-5">
-    <h1 class="text-center mb-4 text-uppercase fw-bold" style="letter-spacing: 2px;">🤖 Ultimate Bot Manager</h1>
+<div class="container mt-5">     
+    <h1 class="text-center mb-4 text-uppercase fw-bold" style="letter-spacing: 2px;">🤖 Ultimate Bot Manager</h1>      
 
-    <!-- Deploy Section -->
-    <div class="card mb-5">
-        <div class="card-header bg-dark text-info fw-bold">Deploy New Instance</div>
-        <div class="card-body">
-            <form action="/deploy" method="POST">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label text-secondary small">GitHub Repository</label>
-                        <input type="text" name="repo_link" class="form-control" placeholder="https://github.com/username/repo" required>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label text-secondary small">Start File (Optional)</label>
-                        <input type="text" name="start_file" class="form-control" placeholder="e.g. app.py">
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label text-secondary small">Port (Optional)</label>
-                        <input type="number" name="custom_port" class="form-control" placeholder="e.g. 5000">
-                    </div>
-                </div>
-                
-                <div class="mb-3">
-                    <label class="form-label text-secondary small">Environment Variables / Config (KEY=VALUE)</label>
-                    <textarea name="env_vars" class="form-control font-monospace" rows="3" placeholder="STRING_SESSION=xyz...&#10;BOT_TOKEN=123:ABC..."></textarea>
-                    <div class="form-text text-secondary">Enter each variable on a new line.</div>
-                </div>
-
-                <button type="submit" class="btn btn-success w-100 fw-bold">⚡ INITIATE DEPLOYMENT</button>
-            </form>
+    <!-- Server Status Section -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="text-secondary small mb-1">CPU Usage (<span id="cpu-text">0</span>%)</div>
+            <div class="progress" style="height: 10px; background-color: #2b2b2b;">
+                <div id="cpu-bar" class="progress-bar bg-success" style="width: 0%"></div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="text-secondary small mb-1">RAM Usage (<span id="ram-text">0</span>%)</div>
+            <div class="progress" style="height: 10px; background-color: #2b2b2b;">
+                <div id="ram-bar" class="progress-bar bg-info" style="width: 0%"></div>
+            </div>
         </div>
     </div>
 
-    <!-- Active List -->
-    <h4 class="mb-3 border-bottom pb-2">Active Instances</h4>
-    <div class="table-responsive">
-        <table class="table table-dark table-hover rounded overflow-hidden align-middle">
-            <thead class="bg-secondary">
-                <tr>
-                    <th>Name</th>
-                    <th>Port</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="bot-table-body">
-                <tr><td colspan="4" class="text-center p-4">Loading system status...</td></tr>
-            </tbody>
-        </table>
-    </div>
-</div>
+    <!-- Deploy Section -->     
+    <div class="card mb-5">         
+        <div class="card-header bg-dark text-info fw-bold">Deploy New Instance</div>         
+        <div class="card-body">             
+            <form action="/deploy" method="POST">                 
+                <div class="row">                     
+                    <div class="col-md-6 mb-3">                         
+                        <label class="form-label text-secondary small">GitHub Repository</label>                         
+                        <input type="text" name="repo_link" class="form-control" placeholder="https://github.com/username/repo" required>                     
+                    </div>                     
+                    <div class="col-md-3 mb-3">                         
+                        <label class="form-label text-secondary small">Start File (Optional)</label>                         
+                        <input type="text" name="start_file" class="form-control" placeholder="e.g. app.py">                     
+                    </div>                     
+                    <div class="col-md-3 mb-3">                         
+                        <label class="form-label text-secondary small">Port (Optional)</label>                         
+                        <input type="number" name="custom_port" class="form-control" placeholder="e.g. 5000">                     
+                    </div>                 
+                </div>                                  
+                <div class="mb-3">                     
+                    <label class="form-label text-secondary small">Environment Variables / Config (KEY=VALUE)</label>                     
+                    <textarea name="env_vars" class="form-control font-monospace" rows="3" placeholder="STRING_SESSION=xyz...&#10;BOT_TOKEN=123:ABC..."></textarea>                     
+                    <div class="form-text text-secondary">Enter each variable on a new line.</div>                 
+                </div>                  
+                <button type="submit" class="btn btn-success w-100 fw-bold">⚡ INITIATE DEPLOYMENT</button>             
+            </form>         
+        </div>     
+    </div>      
 
-<!-- Config Modal -->
-<div class="modal fade" id="configModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">⚙️ Edit Configuration</h5>
+    <!-- Active List -->     
+    <h4 class="mb-3 border-bottom pb-2">Active Instances</h4>     
+    <div class="table-responsive">         
+        <table class="table table-dark table-hover rounded overflow-hidden align-middle">             
+            <thead class="bg-secondary">                 
+                <tr>                     
+                    <th>Name</th>                     
+                    <th>Port</th>                     
+                    <th>Status</th>                     
+                    <th>Actions</th>                 
+                </tr>             
+            </thead>             
+            <tbody id="bot-table-body">                 
+                <tr><td colspan="4" class="text-center p-4">Loading system status...</td></tr>             
+            </tbody>         
+        </table>     
+    </div> 
+</div>  
+
+<!-- Config Modal --> 
+<div class="modal fade" id="configModal" tabindex="-1">     
+    <div class="modal-dialog">         
+        <div class="modal-content">             
+            <div class="modal-header">                 
+                <h5 class="modal-title">⚙️ Edit Configuration</h5>                 
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>             
+            </div>             
+            <div class="modal-body">                 
+                <input type="hidden" id="edit-bot-name">                 
+                <div class="mb-3">                     
+                    <label class="form-label">Environment Variables</label>                     
+                    <textarea id="edit-env-vars" class="form-control font-monospace" rows="6"></textarea>                 
+                </div>             
+            </div>             
+            <div class="modal-footer">                 
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>                 
+                <button type="button" class="btn btn-primary" onclick="saveConfig()">Save & Apply</button>             
+            </div>         
+        </div>     
+    </div> 
+</div>  
+
+<!-- Terminal Log Modal -->
+<div class="modal fade" id="logModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-secondary">
+            <div class="modal-header bg-dark border-secondary">
+                <h5 class="modal-title text-warning">📜 Terminal Logs: <span id="log-bot-name" class="fw-bold text-white"></span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <input type="hidden" id="edit-bot-name">
-                <div class="mb-3">
-                    <label class="form-label">Environment Variables</label>
-                    <textarea id="edit-env-vars" class="form-control font-monospace" rows="6"></textarea>
-                </div>
+            <div class="modal-body bg-black p-0">
+                <pre id="terminal-logs" class="text-success p-3" style="height: 400px; overflow-y: scroll; font-family: 'Courier New', Courier, monospace; font-size: 14px; margin: 0; white-space: pre-wrap;"></pre>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="saveConfig()">Save & Apply</button>
+            <div class="modal-footer bg-dark border-secondary">
+                <button class="btn btn-outline-info btn-sm" onclick="refreshLogs()">🔄 Refresh Logs</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
 </div>
 
-<script>
-    function updateStatus() {
-        $.getJSON('/status', function(data) {
-            let rows = '';
-            if(data.length === 0) {
-                rows = '<tr><td colspan="4" class="text-center text-secondary p-4">No bots deployed. Start one above!</td></tr>';
-            } else {
-                $.each(data, function(key, bot) {
-                    let statusClass = "status-loading";
-                    if(bot.status.includes("Running")) statusClass = "status-running";
-                    if(bot.status.includes("Stopped") || bot.status.includes("Crashed")) statusClass = "status-stopped";
+<script>     
+    let currentLogBot = "";
 
-                    let mainBtn = bot.running 
-                        ? `<a href="/stop/${bot.name}" class="btn btn-warning btn-sm fw-bold">🛑 Stop</a>`
-                        : `<a href="/start/${bot.name}" class="btn btn-success btn-sm fw-bold">▶️ Start</a>`;
+    function updateStatus() {         
+        $.getJSON('/status', function(data) {             
+            let rows = '';             
+            if(data.length === 0) {                 
+                rows = '<tr><td colspan="4" class="text-center text-secondary p-4">No bots deployed. Start one above!</td></tr>';             
+            } else {                 
+                $.each(data, function(key, bot) {                     
+                    let statusClass = "status-loading";                     
+                    if(bot.status.includes("Running")) statusClass = "status-running";                     
+                    if(bot.status.includes("Stopped") || bot.status.includes("Crashed")) statusClass = "status-stopped";                      
                     
-                    let webBtn = bot.running
-                        ? `<a href="/view/${bot.name}/" target="_blank" class="btn btn-web btn-sm fw-bold ms-1">🔗 Web</a>`
-                        : `<button class="btn btn-secondary btn-sm ms-1" disabled>🔗 Web</button>`;
+                    let mainBtn = bot.running                          
+                        ? `<a href="/stop/${bot.name}" class="btn btn-warning btn-sm fw-bold">🛑 Stop</a>`                         
+                        : `<a href="/start/${bot.name}" class="btn btn-success btn-sm fw-bold">▶️ Start</a>`;                                          
+                    
+                    let webBtn = bot.running                         
+                        ? `<a href="/view/${bot.name}/" target="_blank" class="btn btn-web btn-sm fw-bold ms-1">🔗 Web</a>`                         
+                        : `<button class="btn btn-secondary btn-sm ms-1" disabled>🔗 Web</button>`;                      
 
-                    rows += `
-                    <tr>
-                        <td class="fw-bold text-white">${bot.name}</td>
-                        <td class="text-info font-monospace">${bot.port}</td>
-                        <td class="${statusClass} small">${bot.status}</td>
-                        <td>
-                            ${mainBtn}
+                    let logBtn = `<button class="btn btn-secondary btn-sm ms-1 fw-bold" onclick="openLogs('${bot.name}')">📜 Logs</button>`;
+
+                    rows += `                     
+                    <tr>                         
+                        <td class="fw-bold text-white">${bot.name}</td>                         
+                        <td class="text-info font-monospace">${bot.port}</td>                         
+                        <td class="${statusClass} small">${bot.status}</td>                         
+                        <td>                             
+                            ${mainBtn}                             
                             ${webBtn}
-                            <button class="btn btn-info btn-sm ms-1 fw-bold" onclick="openConfig('${bot.name}')">⚙️</button>
-                            <a href="/delete/${bot.name}" class="btn btn-danger btn-sm ms-2">🗑️</a>
-                        </td>
-                    </tr>`;
-                });
-            }
-            $('#bot-table-body').html(rows);
+                            ${logBtn}                             
+                            <button class="btn btn-info btn-sm ms-1 fw-bold" onclick="openConfig('${bot.name}')">⚙️</button>                             
+                            <a href="/delete/${bot.name}" class="btn btn-danger btn-sm ms-2" onclick="return confirm('Are you sure you want to permanently delete ${bot.name}?')">🗑️</a>                         
+                        </td>                     
+                    </tr>`;                 
+                });             
+            }             
+            $('#bot-table-body').html(rows);         
+        });     
+    }      
+
+    function updateSystemStats() {
+        $.getJSON('/system_stats', function(data) {
+            $('#cpu-text').text(data.cpu);
+            $('#cpu-bar').css('width', data.cpu + '%');
+            
+            $('#ram-text').text(data.ram);
+            $('#ram-bar').css('width', data.ram + '%');
+
+            // রঙ পরিবর্তন (যদি বেশি লোড হয় তবে লাল হবে)
+            if(data.cpu > 80) $('#cpu-bar').removeClass('bg-success').addClass('bg-danger');
+            else $('#cpu-bar').removeClass('bg-danger').addClass('bg-success');
+
+            if(data.ram > 80) $('#ram-bar').removeClass('bg-info').addClass('bg-danger');
+            else $('#ram-bar').removeClass('bg-danger').addClass('bg-info');
         });
     }
 
-    function openConfig(botName) {
-        $('#edit-bot-name').val(botName);
-        $.getJSON('/get_config/' + botName, function(data) {
-            $('#edit-env-vars').val(data.env);
-            new bootstrap.Modal(document.getElementById('configModal')).show();
+    function openConfig(botName) {         
+        $('#edit-bot-name').val(botName);         
+        $.getJSON('/get_config/' + botName, function(data) {             
+            $('#edit-env-vars').val(data.env);             
+            new bootstrap.Modal(document.getElementById('configModal')).show();         
+        });     
+    }      
+
+    function saveConfig() {         
+        let botName = $('#edit-bot-name').val();         
+        let envData = $('#edit-env-vars').val();                  
+        $.post('/update_config/' + botName, { env_vars: envData }, function(resp) {             
+            alert("✅ Config Saved! Please Stop & Start the bot to apply changes.");             
+            const modalEl = document.getElementById('configModal');             
+            const modal = bootstrap.Modal.getInstance(modalEl);             
+            modal.hide();         
+        });     
+    }      
+
+    function openLogs(botName) {
+        currentLogBot = botName;
+        $('#log-bot-name').text(botName);
+        $('#terminal-logs').text("Loading logs...");
+        refreshLogs();
+        new bootstrap.Modal(document.getElementById('logModal')).show();
+    }
+
+    function refreshLogs() {
+        if (!currentLogBot) return;
+        $.get('/logs/' + currentLogBot, function(data) {
+            let logBox = $('#terminal-logs');
+            logBox.text(data);
+            logBox.scrollTop(logBox[0].scrollHeight); 
         });
     }
 
-    function saveConfig() {
-        let botName = $('#edit-bot-name').val();
-        let envData = $('#edit-env-vars').val();
-        
-        $.post('/update_config/' + botName, { env_vars: envData }, function(resp) {
-            alert("✅ Config Saved! Please Stop & Start the bot to apply changes.");
-            const modalEl = document.getElementById('configModal');
-            const modal = bootstrap.Modal.getInstance(modalEl);
-            modal.hide();
-        });
-    }
+    setInterval(updateStatus, 3000);     
+    setInterval(updateSystemStats, 3000);
+    
+    // Initial Load
+    updateStatus(); 
+    updateSystemStats();
+</script>  
 
-    setInterval(updateStatus, 2000);
-    updateStatus();
-</script>
-
-</body>
+</body> 
 </html>
