@@ -7,26 +7,25 @@ import ast
 import time
 import random
 import requests
-import json  # <--- নতুন যুক্ত করা হয়েছে
+import json  
 from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
 
 app = Flask(__name__)
 
 # --- কনফিগারেশন ---
 CLONE_DIR = "cloned_repos"
-DATA_FILE = "bots_data.json"  # <--- ডাটাবেস ফাইল
+DATA_FILE = "bots_data.json"  
 
 if not os.path.exists(CLONE_DIR):
     os.makedirs(CLONE_DIR)
 
-# মেমোরি স্টোরেজ (এখন আমরা ফাইল থেকে লোড করব)
+# মেমোরি স্টোরেজ 
 running_processes = {}   
 deployment_status = {}   
 bot_configs = {}         
 
 # --- ডাটাবেস লোড এবং সেভ ফাংশন ---
 def load_data():
-    """বট চালু হওয়ার সময় আগের ডাটা লোড করা"""
     global bot_configs
     if os.path.exists(DATA_FILE):
         try:
@@ -38,7 +37,6 @@ def load_data():
         bot_configs = {}
 
 def save_data():
-    """যেকোন পরিবর্তনের পর ডাটা সেভ করা"""
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(bot_configs, f, indent=4)
@@ -101,6 +99,26 @@ def get_imports_from_folder(folder_path):
                     pass
     return imports
 
+def pull_latest_code(folder_name):
+    """গিটহাব থেকে নতুন আপডেট নেওয়ার ফাংশন"""
+    repo_path = os.path.join(CLONE_DIR, folder_name)
+    if os.path.exists(os.path.join(repo_path, ".git")):
+        deployment_status[folder_name] = "🔄 Pulling Latest Code..."
+        try:
+            # লোকাল কোন পরিবর্তন থাকলে মুছে দিয়ে গিটহাবের সাথে সিঙ্ক করা
+            subprocess.run(["git", "reset", "--hard"], cwd=repo_path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["git", "pull"], cwd=repo_path, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # requirements.txt চেক করা এবং আপডেট করা
+            req_file = os.path.join(repo_path, "requirements.txt")
+            if os.path.exists(req_file):
+                deployment_status[folder_name] = "📦 Updating Packages..."
+                subprocess.run(["pip", "install", "-r", "requirements.txt"], cwd=repo_path, stdout=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"Error updating repo {folder_name}: {e}")
+            deployment_status[folder_name] = "⚠️ Update Failed (Running Old Code)"
+            time.sleep(2)
+
 def run_bot_process(folder_name):
     """বট স্টার্ট করার ফাংশন"""
     repo_path = os.path.join(CLONE_DIR, folder_name)
@@ -115,7 +133,6 @@ def run_bot_process(folder_name):
         deployment_status[folder_name] = "⚠️ Start File Missing"
         return
 
-    # যদি অলরেডি রানিং থাকে তবে নতুন করে রান করার দরকার নেই
     if folder_name in running_processes and running_processes[folder_name].poll() is None:
         return
 
@@ -154,14 +171,13 @@ def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
     
     env_vars = parse_env_text(env_text)
 
-    # কনফিগ আপডেট এবং সেভ
     bot_configs[folder_name] = {
         "link": repo_link,
         "start_file": start_file,
         "port": port_to_use,
         "env": env_vars
     }
-    save_data() # <--- ডাটাবেসে সেভ করা হলো
+    save_data() 
 
     try:
         if not os.path.exists(repo_path):
@@ -175,7 +191,7 @@ def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
         else:
             deployment_status[folder_name] = "🔍 Smart Scanning..."
             detected_imports = get_imports_from_folder(repo_path)
-            packages_to_install = []
+            packages_to_install =[]
             for lib in detected_imports:
                 if lib not in STANDARD_LIBS and not lib.startswith("_"):
                     packages_to_install.append(PIP_MAPPING.get(lib, lib))
@@ -186,12 +202,12 @@ def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
 
         run_path = os.path.join(repo_path, start_file)
         if not os.path.exists(run_path):
-            possible_files = ["app.py", "main.py", "bot.py", "start.py", "run.py"]
+            possible_files =["app.py", "main.py", "bot.py", "start.py", "run.py"]
             for f in possible_files:
                 if os.path.exists(os.path.join(repo_path, f)):
                     start_file = f
                     bot_configs[folder_name]["start_file"] = f
-                    save_data() # <--- স্টার্ট ফাইল আপডেট হলে আবার সেভ
+                    save_data() 
                     break
         
         run_bot_process(folder_name)
@@ -202,10 +218,9 @@ def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
 
 # --- আগের সেশন রিস্টোর করা ---
 def restore_sessions():
-    """সার্ভার চালু হলে পুরনো বটগুলো আবার চালু করবে"""
-    time.sleep(2) # Flask চালু হওয়ার জন্য একটু সময় দেওয়া
+    time.sleep(2) 
     print("🔄 Restoring previous sessions...")
-    load_data() # ফাইল থেকে ডাটা লোড
+    load_data() 
     for folder_name in bot_configs:
         path = os.path.join(CLONE_DIR, folder_name)
         if os.path.exists(path):
@@ -223,7 +238,6 @@ def home():
 @app.route('/view/<folder_name>/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_view(folder_name, path):
     config = bot_configs.get(folder_name)
-    # প্রসেস যদি ক্র্যাশ করে থাকে তবুও যাতে কনফিগ থাকে
     if not config:
         return "Bot config not found!", 404
         
@@ -241,15 +255,15 @@ def proxy_view(folder_name, path):
             cookies=request.cookies,
             allow_redirects=False
         )
-        if resp.status_code in [301, 302, 303, 307, 308]:
+        if resp.status_code in[301, 302, 303, 307, 308]:
             location = resp.headers.get('Location')
             if location:
                 if base_url in location: location = location.replace(base_url, "")
                 new_loc = f"/view/{folder_name}{location}" if location.startswith("/") else f"/view/{folder_name}/{location}"
                 return redirect(new_loc, code=resp.status_code)
 
-        excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'location']
-        headers = [(name, value) for (name, value) in resp.headers.items() if name.lower() not in excluded_headers]
+        excluded_headers =['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'location']
+        headers =[(name, value) for (name, value) in resp.headers.items() if name.lower() not in excluded_headers]
 
         content = resp.content
         if 'text/html' in resp.headers.get('Content-Type', ''):
@@ -266,8 +280,7 @@ def proxy_view(folder_name, path):
 
 @app.route('/status')
 def status_api():
-    bots_data = []
-    # ডাটাবেস থেকে কনফিগ নিয়ে লুপ চালাবো
+    bots_data =[]
     for folder, config in bot_configs.items():
         current_status = deployment_status.get(folder, "Unknown")
         is_running = False
@@ -279,7 +292,6 @@ def status_api():
             else:
                 current_status = "Stopped 🔴"
         else:
-            # যদি কনফিগ থাকে কিন্তু প্রসেস না থাকে
             current_status = deployment_status.get(folder, "Stopped 🔴")
 
         bots_data.append({
@@ -302,7 +314,7 @@ def update_config(folder_name):
     if folder_name in bot_configs:
         env_text = request.form.get("env_vars", "")
         bot_configs[folder_name]["env"] = parse_env_text(env_text)
-        save_data() # <--- আপডেটের পর সেভ
+        save_data()
         return "Updated", 200
     return "Not Found", 404
 
@@ -329,10 +341,40 @@ def deploy():
 
 @app.route('/start/<folder_name>')
 def start_bot(folder_name):
+    """স্টার্ট করার আগে নতুন কোড পুশ করবে"""
     if folder_name not in running_processes or running_processes[folder_name].poll() is not None:
-        deployment_status[folder_name] = "⏳ Starting..."
-        thread = threading.Thread(target=run_bot_process, args=(folder_name,))
+        deployment_status[folder_name] = "⏳ Preparing to Start..."
+        
+        def start_task():
+            pull_latest_code(folder_name)
+            run_bot_process(folder_name)
+            
+        thread = threading.Thread(target=start_task)
         thread.start()
+    return redirect(url_for('home'))
+
+@app.route('/update/<folder_name>')
+def update_bot(folder_name):
+    """স্টপ করে, আপডেট নিয়ে তারপর স্টার্ট করবে"""
+    deployment_status[folder_name] = "🔄 Updating & Restarting..."
+    
+    def update_task():
+        # বট রানিং থাকলে আগে স্টপ করা হবে
+        if folder_name in running_processes:
+            try:
+                running_processes[folder_name].terminate()
+                running_processes[folder_name].wait(timeout=2)
+            except:
+                running_processes[folder_name].kill()
+            del running_processes[folder_name]
+        
+        # গিটহাব থেকে পুল করা হবে
+        pull_latest_code(folder_name)
+        # পুনরায় চালু করা হবে
+        run_bot_process(folder_name)
+        
+    thread = threading.Thread(target=update_task)
+    thread.start()
     return redirect(url_for('home'))
 
 @app.route('/stop/<folder_name>')
@@ -361,12 +403,10 @@ def delete_bot(folder_name):
     if folder_name in deployment_status: del deployment_status[folder_name]
     if folder_name in bot_configs: 
         del bot_configs[folder_name]
-        save_data() # <--- ডিলিট করার পর ডাটাবেস আপডেট
+        save_data() 
     return redirect(url_for('home'))
 
 if __name__ == "__main__":
-    # অ্যাপ চালু হওয়ার সময় অটোমেটিক আগের বটগুলো স্টার্ট হবে
     threading.Thread(target=restore_sessions).start()
-    
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port)
