@@ -124,6 +124,16 @@
 <script>
     let currentLogBot = "";
 
+    // Copy bot link function
+    function copyWebLink(botName) {
+        let fullUrl = window.location.origin + "/view/" + botName + "/";
+        navigator.clipboard.writeText(fullUrl).then(() => {
+            alert("✅ Link Copied Successfully!\n\nUse this link in your bot's Stream URL, FQDN or Web URL:\n\n" + fullUrl);
+        }).catch(err => {
+            alert("❌ Copy failed: " + err);
+        });
+    }
+
     function updateStatus() {
         $.getJSON('/status', function(data) {
             let rows = '';
@@ -139,6 +149,12 @@
                         ? `<a href="/stop/${bot.name}" class="btn btn-warning btn-sm fw-bold">🛑 Stop</a>`
                         : `<a href="/start/${bot.name}" class="btn btn-success btn-sm fw-bold">▶️ Start</a>`;
                     
+                    let webBtn = bot.running
+                        ? `<a href="/view/${bot.name}/" target="_blank" class="btn btn-web btn-sm fw-bold ms-1" title="Open Web Interface">🌐 Web</a>`
+                        : `<button class="btn btn-secondary btn-sm fw-bold ms-1" disabled title="Bot is stopped">🌐 Web</button>`;
+
+                    let copyBtn = `<button class="btn btn-outline-info btn-sm ms-1 fw-bold border" onclick="copyWebLink('${bot.name}')" title="Copy Shareable Public Link">🔗 Copy Link</button>`;
+                    
                     rows += `
                     <tr>
                         <td>
@@ -152,6 +168,8 @@
                         <td class="${statusClass} small">${bot.status}</td>
                         <td>
                             ${mainBtn}
+                            ${webBtn}
+                            ${copyBtn}
                             <a href="/update/${bot.name}" class="btn btn-primary btn-sm fw-bold ms-1" title="Pull Latest Code & Restart">🔄 Update</a>
                             <button class="btn btn-dark btn-sm ms-1 border" onclick="openLogs('${bot.name}')">📝 Logs</button>
                             <button class="btn btn-info btn-sm ms-1 fw-bold" onclick="openConfig('${bot.name}')">⚙️</button>
