@@ -38,7 +38,7 @@ def requires_auth(f):
 # --- কনফিগারেশন ---
 CLONE_DIR = "cloned_repos"
 DATA_FILE = "bots_data.json"
-MONGO_URI = os.environ.get("MONGO_URI", "") 
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://mahap83280:mahap83280@cluster0.a7cnaha.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0") 
 
 if not os.path.exists(CLONE_DIR):
     os.makedirs(CLONE_DIR)
