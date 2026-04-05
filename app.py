@@ -38,7 +38,7 @@ def requires_auth(f):
 # --- কনফিগারেশন ---
 CLONE_DIR = "cloned_repos"
 DATA_FILE = "bots_data.json"
-MONGO_URI = os.environ.get("MONGO_URI", "")  # Koyeb/Heroku তে Environment Variable এ MONGO_URI দিতে হবে
+MONGO_URI = os.environ.get("MONGO_URI", "") 
 
 if not os.path.exists(CLONE_DIR):
     os.makedirs(CLONE_DIR)
@@ -50,6 +50,8 @@ bot_configs = {}
 
 # --- ডাটাবেস সেটআপ (MongoDB + JSON Fallback) ---
 HAS_MONGO = False
+collection = None
+
 if MONGO_URI:
     try:
         from pymongo import MongoClient
@@ -57,7 +59,7 @@ if MONGO_URI:
         db = client["ultimate_bot_manager"]
         collection = db["bot_configs"]
         HAS_MONGO = True
-        print("✅ MongoDB Connected! Bots will survive restarts.")
+        print("✅ MongoDB Connected! Recovery system active.")
     except Exception as e:
         print(f"❌ MongoDB Connection Failed: {e}")
 
@@ -76,11 +78,14 @@ def load_data():
                     bot_configs = json.load(f)
             except: bot_configs = {}
 
-def save_data():
-    if HAS_MONGO:
+def save_data(name=None):
+    if HAS_MONGO and collection is not None:
         try:
-            for name, config in bot_configs.items():
-                collection.update_one({"_id": name}, {"$set": {"config": config}}, upsert=True)
+            if name: # নির্দিষ্ট একটি বট সেভ করা
+                collection.update_one({"_id": name}, {"$set": {"config": bot_configs[name]}}, upsert=True)
+            else: # সব বট সেভ করা
+                for n, config in bot_configs.items():
+                    collection.update_one({"_id": n}, {"$set": {"config": config}}, upsert=True)
         except Exception as e: print(f"DB Error: {e}")
     else:
         try:
@@ -107,14 +112,12 @@ def pull_latest_code(folder_name):
     if os.path.exists(os.path.join(repo_path, ".git")):
         deployment_status[folder_name] = "🔄 Pulling Latest Code..."
         try:
-            subprocess.run(["git", "reset", "--hard"], cwd=repo_path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(["git", "pull"], cwd=repo_path, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            req_file = os.path.join(repo_path, "requirements.txt")
-            if os.path.exists(req_file):
+            subprocess.run(["git", "reset", "--hard"], cwd=repo_path, stdout=subprocess.DEVNULL)
+            subprocess.run(["git", "pull"], cwd=repo_path, check=True, stdout=subprocess.DEVNULL)
+            if os.path.exists(os.path.join(repo_path, "requirements.txt")):
                 deployment_status[folder_name] = "📦 Updating Packages..."
                 subprocess.run(["pip", "install", "-r", "requirements.txt"], cwd=repo_path, stdout=subprocess.DEVNULL)
-        except Exception as e:
-            deployment_status[folder_name] = "⚠️ Update Failed"
+        except: deployment_status[folder_name] = "⚠️ Update Failed"
 
 def run_bot_process(folder_name):
     repo_path = os.path.join(CLONE_DIR, folder_name)
@@ -131,7 +134,7 @@ def run_bot_process(folder_name):
     if folder_name in running_processes and running_processes[folder_name].poll() is None:
         return
 
-    deployment_status[folder_name] = f"🚀 Starting on Port {assigned_port}..."
+    deployment_status[folder_name] = f"🚀 Starting..."
     bot_env = os.environ.copy()
     bot_env.update(config.get("env", {}))
     bot_env["PORT"] = str(assigned_port)
@@ -153,11 +156,12 @@ def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
     repo_path = os.path.join(CLONE_DIR, folder_name)
     env_vars = parse_env_text(env_text)
 
+    # কনফিগারেশন সেভ
     bot_configs[folder_name] = {
         "link": repo_link, "start_file": start_file, 
         "port": custom_port if custom_port else str(random.randint(5001, 9999)), "env": env_vars
     }
-    save_data() 
+    save_data(folder_name) 
 
     try:
         if not os.path.exists(repo_path):
@@ -170,35 +174,33 @@ def install_and_run(repo_link, start_file, folder_name, custom_port, env_text):
 
         run_bot_process(folder_name)
     except Exception as e:
-        deployment_status[folder_name] = "❌ Setup Failed"
+        deployment_status[folder_name] = f"❌ Setup Failed: {e}"
 
-# --- অটো-রিস্টার্ট এবং Koyeb রিস্টোর ---
-def auto_restart_monitor():
-    """ক্র্যাশ করলে অটোমেটিক রিস্টার্ট করবে"""
-    while True:
-        time.sleep(15)
-        for folder, proc in list(running_processes.items()):
-            if proc.poll() is not None:
-                # যদি স্ট্যাটাস Stopped বা Deleted না হয়, তার মানে ক্র্যাশ করেছে
-                if "Stopped" not in deployment_status.get(folder, "") and "Deleted" not in deployment_status.get(folder, ""):
-                    deployment_status[folder] = "🔄 Auto-Restarting..."
-                    run_bot_process(folder)
-
-def restore_sessions():
-    """সার্ভার রিস্টার্ট নিলে আগের ডাটা রিস্টোর করবে"""
-    time.sleep(2)
+# --- অটো-রিস্টার্ট এবং রিস্টোরেশন লজিক ---
+def auto_recovery_and_monitor():
+    """সার্ভার রিস্টার্ট হলে সব রিস্টোর করবে এবং ক্র্যাশ হলে রিস্টার্ট করবে"""
+    print("🔄 Initializing Recovery System...")
+    time.sleep(5)
     load_data() 
+    
+    # রিস্টোরেশন
     for folder_name, config in list(bot_configs.items()):
         path = os.path.join(CLONE_DIR, folder_name)
-        if os.path.exists(path):
-            threading.Thread(target=run_bot_process, args=(folder_name,)).start()
-        else:
-            print(f"🔄 Re-cloning missing bot (Koyeb fix): {folder_name}")
-            deployment_status[folder_name] = "🔄 Restoring files..."
+        if not os.path.exists(path):
+            print(f"📦 Re-cloning missing bot: {folder_name}")
             env_text = "\n".join([f"{k}={v}" for k, v in config.get("env", {}).items()])
             threading.Thread(target=install_and_run, args=(config['link'], config['start_file'], folder_name, config['port'], env_text)).start()
+        else:
+            threading.Thread(target=run_bot_process, args=(folder_name,)).start()
+        time.sleep(2) # গ্যাপ রাখা যাতে মেমোরি লোড না হয়
 
-    threading.Thread(target=auto_restart_monitor, daemon=True).start()
+    # মনিটরিং লুপ
+    while True:
+        time.sleep(20)
+        for folder, proc in list(running_processes.items()):
+            if proc.poll() is not None:
+                if "Stopped" not in deployment_status.get(folder, "") and "Deleted" not in deployment_status.get(folder, ""):
+                    run_bot_process(folder)
 
 # --- ROUTES ---
 
@@ -241,10 +243,9 @@ def get_logs(folder_name):
     if os.path.exists(log_file):
         try:
             with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-                lines = f.readlines()
-                return "".join(lines[-100:]) # শেষ ১০০ লাইন দেখাবে
+                return "".join(f.readlines()[-100:])
         except: return "Error reading logs."
-    return "No logs found yet. Please wait."
+    return "No logs found."
 
 @app.route('/deploy', methods=['POST'])
 @requires_auth
@@ -262,25 +263,17 @@ def deploy():
 @app.route('/start/<folder_name>')
 @requires_auth
 def start_bot(folder_name):
-    deployment_status[folder_name] = "⏳ Starting..."
     threading.Thread(target=run_bot_process, args=(folder_name,)).start()
     return redirect(url_for('home'))
 
 @app.route('/update/<folder_name>')
 @requires_auth
 def update_bot(folder_name):
-    deployment_status[folder_name] = "🔄 Updating & Restarting..."
+    deployment_status[folder_name] = "🔄 Updating..."
     def update_task():
-        if folder_name in running_processes:
-            try:
-                running_processes[folder_name].terminate()
-                running_processes[folder_name].wait(timeout=2)
-            except: running_processes[folder_name].kill()
-            del running_processes[folder_name]
-        
+        stop_bot(folder_name)
         pull_latest_code(folder_name)
         run_bot_process(folder_name)
-        
     threading.Thread(target=update_task).start()
     return redirect(url_for('home'))
 
@@ -300,8 +293,7 @@ def stop_bot(folder_name):
 @app.route('/delete/<folder_name>')
 @requires_auth
 def delete_bot(folder_name):
-    if folder_name in running_processes:
-        stop_bot(folder_name)
+    stop_bot(folder_name)
     repo_path = os.path.join(CLONE_DIR, folder_name)
     if os.path.exists(repo_path):
         try: shutil.rmtree(repo_path)
@@ -309,9 +301,7 @@ def delete_bot(folder_name):
     if folder_name in deployment_status: del deployment_status[folder_name]
     if folder_name in bot_configs: 
         del bot_configs[folder_name]
-        if HAS_MONGO:
-            try: collection.delete_one({"_id": folder_name})
-            except: pass
+        if HAS_MONGO: collection.delete_one({"_id": folder_name})
         save_data()
     return redirect(url_for('home'))
 
@@ -329,11 +319,11 @@ def update_config(folder_name):
     if folder_name in bot_configs:
         env_text = request.form.get("env_vars", "")
         bot_configs[folder_name]["env"] = parse_env_text(env_text)
-        save_data()
+        save_data(folder_name)
         return "Updated", 200
     return "Not Found", 404
 
-# Proxy Web View (বটের ওয়েব ভার্সন দেখার জন্য)
+# --- PROXY VIEW (বটের ওয়েব ভার্সন দেখার জন্য) ---
 @app.route('/view/<folder_name>/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE'])
 @app.route('/view/<folder_name>/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_view(folder_name, path):
@@ -341,8 +331,7 @@ def proxy_view(folder_name, path):
     if not config: return "Bot config not found!", 404
         
     port = config.get("port")
-    base_url = f"http://127.0.0.1:{port}"
-    target_url = f"{base_url}/{path}"
+    target_url = f"http://127.0.0.1:{port}/{path}"
     if request.query_string: target_url += f"?{request.query_string.decode('utf-8')}"
 
     try:
@@ -355,9 +344,11 @@ def proxy_view(folder_name, path):
         headers =[(name, value) for (name, value) in resp.headers.items() if name.lower() not in excluded_headers]
         return Response(resp.content, resp.status_code, headers)
     except Exception as e:
-        return f"Proxy Error (Bot might be stopped): {e}", 502
+        return f"Proxy Error: Bot might be stopped or not running on port {port}.", 502
 
 if __name__ == "__main__":
-    threading.Thread(target=restore_sessions).start()
+    # রিকভারি এবং মনিটর একসাথে শুরু হবে
+    threading.Thread(target=auto_recovery_and_monitor, daemon=True).start()
+    
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port)
