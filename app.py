@@ -38,7 +38,7 @@ def requires_auth(f):
 # --- কনফিগারেশন ---
 CLONE_DIR = "cloned_repos"
 DATA_FILE = "bots_data.json"
-MONGO_URI = os.environ.get("MONGO_URI", "")  # Koyeb/Heroku তে Environment Variable এ MONGO_URI দিতে হবে
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://galop32430:galop32430@cluster0.lslkl.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")  # Koyeb/Heroku তে Environment Variable এ MONGO_URI দিতে হবে
 
 if not os.path.exists(CLONE_DIR):
     os.makedirs(CLONE_DIR)
